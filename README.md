@@ -86,13 +86,17 @@ lifecycle
 
 
 2. To compile the code, run this command in the terminal
+   ```
    g++ -O3 -I include apps/main.cpp src/Cluster.cpp src/Environment.cpp src/Random.cpp src/Species.cpp -o bin/main.out.exe
-3. To run the code, first change directory using
+4. To run the code, first change directory using
+   ```
    cd bin
-   Then run the simulation using
+  Then run the simulation using
+  ```
    .\main.out.exe
-4. To see the graphs, run "plot graphs.py".
-5. To see the animation, run "visualiser.py".
+```
+6. To see the graphs, run "plot graphs.py".
+7. To see the animation, run "visualiser.py".
 ### Development Workflow
 
 ```bash
