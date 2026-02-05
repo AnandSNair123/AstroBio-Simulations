@@ -28,9 +28,6 @@ Cluster::Cluster(int numBacteria, int randomiseType, double energyValue)
                     ranGen.Int(0, ranges[2]) 
                 };
                 
-                // FIX: Give them a "Packed Lunch" (Start with HIGH Energy)
-                // Instead of 0-300 random, we give them 250-300.
-                // This ensures they don't die in the first second.
                 double randomEnergy = ranGen.Double(250.0, 300.0);
                 
                 Bacterium* individual = new Bacterium(randomPosition, randomEnergy);
@@ -85,7 +82,6 @@ void Cluster::run(string filename){
     double timeElapsed = 0.0f;
     double tempres = Bacterium::getTemporalResolution();
     
-    // 5000 Steps is enough to see the full "Bell Curve"
     const double maxTime = 5000.0; 
 
     cout << "\033[2J"; 
@@ -113,7 +109,6 @@ void Cluster::run(string filename){
 
         for (Bacterium& baby : newMembers) add(&baby);
 
-        // Run physics every step now to ensure food spreads fast enough
         diffuse();
 
         timeStep++;
@@ -122,7 +117,6 @@ void Cluster::run(string filename){
         int countNormal = 0, countPP = 0, countPM = 0, countMP = 0, countMM = 0;
         for (const Bacterium& b : alive) {
             if (b.isAlive()) {
-                // Check types for color graph (Even if mutation is off, this is safe)
                 switch (b.type) {
                     case 0: countNormal++; break;
                     case 1: countPP++; break;
@@ -153,4 +147,5 @@ void Cluster::run(string filename){
         }
     }
     file.close();
+
 }
