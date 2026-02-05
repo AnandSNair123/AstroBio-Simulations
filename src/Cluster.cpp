@@ -3,43 +3,32 @@
 #include <stdexcept>
 #include <iomanip>
 #include <string>
-#include <vector>
-#include <algorithm> 
-
 using namespace std;
 
 #include "Cluster.h"
 #include "Random.h"
 
-// 200x200x50 Grid
-Cluster::Cluster(int numBacteria, int randomiseType, double energyValue) 
-    : Environment(200, 200, 50) {
-    
+Cluster::Cluster(int numBacteria, int randomiseType, double energyValue){
     RandomGenerator ranGen;
-    cout << "Spawning " << numBacteria << " initial bacteria..." << endl;
 
     switch (randomiseType)
     {
         case 1:
             for (int i = 0; i < numBacteria; ++i){
-                vector<int> randomPosition = { 
-                    ranGen.Int(0, ranges[0]), 
-                    ranGen.Int(0, ranges[1]), 
-                    ranGen.Int(0, ranges[2]) 
-                };
-                
-                double randomEnergy = ranGen.Double(250.0, 300.0);
+                vector<int> randomPosition = { ranGen.Int(0, ranges[0]), 
+                                               ranGen.Int(0, ranges[1]), 
+                                               ranGen.Int(0, ranges[2]) };
+                double randomEnergy = ranGen.Double(0, energyValue);
                 
                 Bacterium* individual = new Bacterium(randomPosition, randomEnergy);
                 add(individual);
-                delete individual; 
             }
         default:
             break;
     }
 }
 
-pair<bool, unsigned long int> Cluster::isPresent(const Bacterium& individual){
+pair<bool, unsigned long int> Cluster::isPresent(Bacterium individual){
     for (unsigned long int i = 0; i < alive.size(); i++)
         if (alive[i] == individual)
             return {true, i};
@@ -49,13 +38,20 @@ pair<bool, unsigned long int> Cluster::isPresent(const Bacterium& individual){
 void Cluster::add(Bacterium* individual){
     totalBacteria++;
     totalAliveBacteria++;
-    if ( individual->getID() == 0 ) individual->setID( totalBacteria );
+
+    if ( individual->getID() == 0 )
+        individual->setID( totalBacteria );
+    else 
+        cout << "Warning : stray bacteria added to cluster" << endl;
     alive.push_back( *individual );
 }
 
 void Cluster::omit(Bacterium* individual){
     pair<bool, unsigned long int> isPresentValue = isPresent(*individual);
-    if (isPresentValue.first) {
+
+    if (!isPresentValue.first)
+        throw runtime_error("Value not found in the vector");
+    else{
         dead.push_back(alive[isPresentValue.second]);
         totalDeadBacteria++;
         alive.erase(alive.begin() + isPresentValue.second);
@@ -63,7 +59,35 @@ void Cluster::omit(Bacterium* individual){
     }
 }
 
-void Cluster::step(){} 
+void Cluster::step(){
+    Bacterium* offspring = new Bacterium();
+    vector<Bacterium> newMembers;
+    vector<Bacterium> deadMembers;
+    bool aliveBefore;
+
+    for (Bacterium& individual : alive){
+        aliveBefore = individual.isAlive();
+        individual.live(static_cast<Environment*>(this), *offspring);
+
+        if (offspring->isAlive() == 1){
+            newMembers.push_back(*offspring);
+            offspring = new Bacterium();
+        }
+
+        if (aliveBefore && !individual.isAlive()){
+            deadMembers.push_back(individual);
+        }
+    }
+
+    diffuse(); 
+
+    for (Bacterium& individual : newMembers)
+        add(&individual);
+    for (Bacterium& individual : deadMembers)
+        omit(&individual);
+
+    delete offspring; 
+}
 
 void Cluster::updateTemporalResolution(double newResolution){
     Environment::updateTemporalResolution(newResolution);
@@ -73,79 +97,69 @@ void Cluster::updateTemporalResolution(double newResolution){
 void Cluster::run(string filename){
     string mainFile = "../results/" + filename;
     ofstream file(mainFile);
-    if (!file.is_open()) throw runtime_error("Could not open file.");
 
-    file << "TimeElapsed,AliveBacteria,TotalBacteria,NetCO2,TotalNutrient,TotalAcetate,"
-         << "Normal,Type++,Type+-,Type-+,Type--\n";
+    string visFile = "../results/vis_data.csv";
+    ofstream vfile(visFile);
+
+    if (!file.is_open() || !vfile.is_open()){
+        throw runtime_error("Could not open files for writing.");
+    }
+
+    file << "TimeElapsed,AliveBacteria,TotalBacteria,NetCO2,TotalNutrient,TotalAcetate\n";
 
     unsigned long int timeStep = 0;
     double timeElapsed = 0.0f;
     double tempres = Bacterium::getTemporalResolution();
     
-    const double maxTime = 5000.0; 
+    const int visFrequency = 5; 
+    const double maxTime = 2000.0;
 
     cout << "\033[2J"; 
 
-    while (alive.size() > 0 && timeElapsed < maxTime){
-        
-        vector<Bacterium> newMembers;
-        
-        auto it = alive.begin();
-        while (it != alive.end()) {
-            if (!it->isAlive()) {
-                dead.push_back(*it); 
-                totalDeadBacteria++;
-                totalAliveBacteria--;
-                it = alive.erase(it); 
-            } else {
-                Bacterium offspring;
-                it->live(static_cast<Environment*>(this), offspring);
-                if (offspring.isAlive()) {
-                    newMembers.push_back(offspring);
-                }
-                ++it;
-            }
-        }
-
-        for (Bacterium& baby : newMembers) add(&baby);
-
-        diffuse();
-
+    while (totalAliveBacteria > 0 && timeElapsed < maxTime){
+        step(); 
         timeStep++;
-        timeElapsed = timeStep * tempres; 
+        timeElapsed = timeStep * tempres;
 
-        int countNormal = 0, countPP = 0, countPM = 0, countMP = 0, countMM = 0;
-        for (const Bacterium& b : alive) {
-            if (b.isAlive()) {
-                switch (b.type) {
-                    case 0: countNormal++; break;
-                    case 1: countPP++; break;
-                    case 2: countPM++; break;
-                    case 3: countMP++; break;
-                    case 4: countMM++; break;
-                    default: countNormal++; break; 
-                }
-            }
-        }
-
+        double currentCO2 = getCO2Level();
         double currentNutrient = getNutrientLevel();
         double currentAcetate = getAcetateLevel();
-        double currentCO2 = getCO2Level();
-        
-        file << timeElapsed << "," << alive.size() << "," << totalBacteria << "," 
-             << currentCO2 << "," << (long)currentNutrient << "," << (long)currentAcetate << ","
-             << countNormal << "," << countPP << "," << countPM << "," 
-             << countMP << "," << countMM << "\n";
+        file << timeElapsed << "," << totalAliveBacteria << "," << totalBacteria << "," 
+             << currentCO2 << "," << currentNutrient << "," << currentAcetate << "\n";
 
-        if (timeStep % 100 == 0) {
-            cout << "\033[H";
-            cout << "GROWTH SIMULATION: [ " << timeElapsed << " / " << maxTime << " ]\n";
-            cout << "Alive          : " << alive.size() << " (Should be increasing)\n";
-            cout << "Nutrients      : " << (long)currentNutrient << "\n";
-            cout << "Acetate        : " << (long)currentAcetate << "\n";
-            cout << flush;
+        if (timeStep % visFrequency == 0) {
+            int zSlice = 25;
+            for(int x=0; x<ranges[0]; x++) {
+                for(int y=0; y<ranges[1]; y++) {
+                    double nut = locale[x][y][zSlice].nutrientLevel;
+                    double ace = locale[x][y][zSlice].acetateLevel;
+                    
+                    if(nut > 1.0) vfile << timeStep << ",0," << x << "," << y << "," << nut << "\n";
+                    if(ace > 1.0) vfile << timeStep << ",1," << x << "," << y << "," << ace << "\n";
+                }
+            }
+            for (Bacterium& b : alive) {
+                vector<int> pos = b.getPosition(); 
+                vfile << timeStep << ",2," << pos[0] << "," << pos[1] << ",1\n";
+            }
+            for (Bacterium& b : dead) {
+                vector<int> pos = b.getPosition();
+                vfile << timeStep << ",3," << pos[0] << "," << pos[1] << ",1\n";
+            }
         }
+        
+        cout << "\033[H";
+        cout << "Simulation Data:\n================\n";
+        cout << fixed << setprecision(2);
+        cout << "Time Elapsed   : " << timeElapsed << " / " << maxTime << "\n";
+        cout << "Alive Bacteria : " << totalAliveBacteria << "\n";
+        cout << "Total Bacteria : " << alive.size()+dead.size() << "\n";
+        cout << "Net CO2 Level  : " << currentCO2 << "\n";
+        cout << "Total Nutrient : " << currentNutrient << "\n";
+        cout << "Total Acetate  : " << currentAcetate << "\n";
+        cout << flush;
     }
-    file.close();
 
+    file.close();
+    vfile.close();
 }
